@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Chosen Palette: Calm Harmony (Warm neutrals like stone/amber, with a muted teal accent) -->
+    <!-- Application Structure Plan: A tabbed interface with two main views: "Browse by Discipline" and "Browse by University". The "Discipline" view retains the original filter-driven dashboard. The new "University" view features a searchable list of all universities on the left and a detailed display area on the right. When a university is selected, the right panel shows its profile and a list of its ranked disciplines, with the chart dynamically updating to visualize that specific university's strengths. This dual-view structure provides two distinct, intuitive user flows for exploring the data, directly addressing the user's request for a university-centric perspective. -->
+    <!-- Visualization & Content Choices: 1. University List -> Goal: Select -> Presentation: Searchable List -> Interaction: Clicking a university name updates the detail panel -> Justification: A searchable list is the most efficient way to handle a long list of items. 2. University Details -> Goal: Inform -> Presentation: Cards/List for ranked disciplines -> Interaction: List updates on selection -> Justification: Mirrors the card pattern for consistency. 3. University Chart -> Goal: Compare (disciplines within a university) -> Presentation: Horizontal Bar Chart (Chart.js) -> Interaction: Updates on selection -> Justification: Provides a clear performance snapshot for a single university. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <title>工科优势学科“纯211”院校交互式浏览器 V2</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            background-color: #fdfcf9;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 50vh;
+            max-height: 500px;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #a8a29e;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #78716c;
+        }
+        .grade-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: white;
+            min-width: 45px;
+            text-align: center;
+        }
+        .tab-btn.active {
+            background-color: #14b8a6;
+            color: white;
+        }
+        .tab-btn {
+            background-color: #f5f5f4;
+            color: #3f3f46;
+        }
+        .uni-list-item.active {
+            background-color: #ccfbf1;
+            border-right: 4px solid #14b8a6;
+        }
+    </style>
+</head>
+<body class="text-stone-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-stone-900">工科优势学科“纯211”院校浏览器</h1>
+            <p class="mt-3 text-stone-600 max-w-3xl mx-auto">
+                在“按学科探索”和“按院校查询”两种模式间切换，以不同视角发掘院校与专业的评估信息。
+            </p>
+        </header>
+        
+        <div class="mb-6 flex justify-center border-b border-stone-200">
+            <button id="tab-discipline" class="tab-btn font-semibold py-2 px-6 rounded-t-lg focus:outline-none">按学科探索</button>
+            <button id="tab-university" class="tab-btn font-semibold py-2 px-6 rounded-t-lg focus:outline-none">按院校查询</button>
+        </div>
+
+        <!-- View 1: Browse by Discipline -->
+        <div id="discipline-view">
+            <div class="sticky top-0 bg-fdfcf9/80 backdrop-blur-sm z-10 py-4 mb-8 rounded-lg">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div>
+                        <label for="discipline-filter" class="block mb-2 text-sm font-medium text-stone-700">按学科筛选</label>
+                        <select id="discipline-filter" class="w-full bg-white border border-stone-300 text-stone-900 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5">
+                            <option value="all">所有学科</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block mb-2 text-sm font-medium text-stone-700">按评估结果筛选</label>
+                        <div id="grade-filter" class="flex flex-wrap gap-2 bg-white p-1.5 rounded-lg border border-stone-300">
+                           <button data-grade="all" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">全部</button>
+                           <button data-grade="A+" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">A+</button>
+                           <button data-grade="A" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">A</button>
+                           <button data-grade="A-" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">A-</button>
+                           <button data-grade="B+" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">B+</button>
+                           <button data-grade="B" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">B</button>
+                           <button data-grade="B-" class="grade-btn flex-1 p-1.5 text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-teal-400">B-</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="search-filter" class="block mb-2 text-sm font-medium text-stone-700">搜索院校名称</label>
+                        <input type="search" id="search-filter" class="w-full bg-white border border-stone-300 text-stone-900 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5" placeholder="例如：北京邮电大学">
+                    </div>
+                </div>
+            </div>
+
+            <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                <div class="lg:col-span-3">
+                    <h2 id="discipline-results-title" class="text-2xl font-bold mb-4 text-stone-800">院校专业列表</h2>
+                    <div id="discipline-results-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 h-[70vh] overflow-y-auto pr-2"></div>
+                    <p id="discipline-no-results" class="text-center text-stone-500 mt-8 hidden">未找到符合条件的院校。</p>
+                </div>
+                <div class="lg:col-span-2">
+                     <h2 id="discipline-chart-title" class="text-2xl font-bold mb-4 text-stone-800">学科实力概览</h2>
+                    <div class="bg-white p-4 rounded-lg shadow-sm border border-stone-200">
+                        <div class="chart-container">
+                            <canvas id="main-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- View 2: Browse by University -->
+        <div id="university-view" class="hidden">
+            <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                <div class="lg:col-span-2">
+                    <h2 class="text-2xl font-bold mb-4 text-stone-800">院校列表</h2>
+                    <div class="mb-4">
+                         <input type="search" id="university-search" class="w-full bg-white border border-stone-300 text-stone-900 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5" placeholder="搜索院校名称...">
+                    </div>
+                    <div id="university-list-container" class="bg-white rounded-lg border border-stone-200 h-[70vh] overflow-y-auto">
+                        <!-- University list will be dynamically inserted here -->
+                    </div>
+                </div>
+                 <div class="lg:col-span-3">
+                     <div id="university-detail-panel">
+                        <div id="university-placeholder" class="flex items-center justify-center h-full text-stone-500 bg-stone-50 rounded-lg">
+                            <p>请从左侧选择一所院校查看详情</p>
+                        </div>
+                        <div id="university-content" class="hidden">
+                             <h2 id="university-name-title" class="text-2xl font-bold mb-4 text-stone-800"></h2>
+                             <div id="university-results-grid" class="space-y-3 h-[70vh] overflow-y-auto pr-2"></div>
+                        </div>
+                     </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const allData = [
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'A-', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B+', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10290', universityName: '中国矿业大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10294', universityName: '河海大学' },
+            { disciplineCode: '0801', disciplineName: '力学', grade: 'B', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'A-', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10008', universityName: '北京科技大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10290', universityName: '中国矿业大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B+', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '10080', universityName: '河北工业大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '10251', universityName: '华东理工大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '10255', universityName: '东华大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '10386', universityName: '福州大学' },
+            { disciplineCode: '0802', disciplineName: '机械工程', grade: 'B', universityCode: '11414', universityName: '中国石油大学(华东)' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B+', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B+', universityCode: '10285', universityName: '苏州大学' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B+', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0803', disciplineName: '光学工程', grade: 'B', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0804', disciplineName: '仪器科学与技术', grade: 'B', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0804', disciplineName: '仪器科学与技术', grade: 'B-', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0804', disciplineName: '仪器科学与技术', grade: 'B-', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0804', disciplineName: '仪器科学与技术', grade: 'B-', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'A-', universityCode: '10010', universityName: '北京化工大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10251', universityName: '华东理工大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10255', universityName: '东华大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10285', universityName: '苏州大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B+', universityCode: '10459', universityName: '郑州大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10080', universityName: '河北工业大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0805', disciplineName: '材料科学与工程', grade: 'B', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'A-', universityCode: '10079', universityName: '华北电力大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'B+', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'B+', universityCode: '10251', universityName: '华东理工大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'B', universityCode: '10008', universityName: '北京科技大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'B', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0807', disciplineName: '动力工程及工程热物理', grade: 'B', universityCode: '11414', universityName: '中国石油大学(华东)' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'A', universityCode: '10079', universityName: '华北电力大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B+', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B+', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B', universityCode: '10080', universityName: '河北工业大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B', universityCode: '10290', universityName: '中国矿业大学' },
+            { disciplineCode: '0808', disciplineName: '电气工程', grade: 'B', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'A+', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'A-', universityCode: '10013', universityName: '北京邮电大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B-', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B-', universityCode: '10357', universityName: '安徽大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B-', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B-', universityCode: '10386', universityName: '福州大学' },
+            { disciplineCode: '0809', disciplineName: '电子科学与技术', grade: 'B-', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'A+', universityCode: '10013', universityName: '北京邮电大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'A', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'A-', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B+', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B', universityCode: '10033', universityName: '中国传媒大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0810', disciplineName: '信息与通信工程', grade: 'B', universityCode: '10497', universityName: '武汉理工大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10008', universityName: '北京科技大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10010', universityName: '北京化工大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10251', universityName: '华东理工大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10295', universityName: '江南大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B+', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B', universityCode: '10079', universityName: '华北电力大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B', universityCode: '10255', universityName: '东华大学' },
+            { disciplineCode: '0811', disciplineName: '控制科学与工程', grade: 'B', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'A', universityCode: '10013', universityName: '北京邮电大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'A-', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'A-', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10008', universityName: '北京科技大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B+', universityCode: '10613', universityName: '西南交通大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10280', universityName: '上海大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10285', universityName: '苏州大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10290', universityName: '中国矿业大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10294', universityName: '河海大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10357', universityName: '安徽大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10497', universityName: '武汉理工大学' },
+            { disciplineCode: '0812', disciplineName: '计算机科学与技术', grade: 'B', universityCode: '10635', universityName: '西南大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'A-', universityCode: '10285', universityName: '苏州大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10004', universityName: '北京交通大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10005', universityName: '北京工业大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10013', universityName: '北京邮电大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10287', universityName: '南京航空航天大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10697', universityName: '西北大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B+', universityCode: '10701', universityName: '西安电子科技大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B', universityCode: '10217', universityName: '哈尔滨工程大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B', universityCode: '10288', universityName: '南京理工大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B', universityCode: '10295', universityName: '江南大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B', universityCode: '10359', universityName: '合肥工业大学' },
+            { disciplineCode: '0835', disciplineName: '软件工程', grade: 'B', universityCode: '10491', universityName: '中国地质大学(武汉)' },
+        ];
+
+        const disciplineView = document.getElementById('discipline-view');
+        const universityView = document.getElementById('university-view');
+        const tabDiscipline = document.getElementById('tab-discipline');
+        const tabUniversity = document.getElementById('tab-university');
+        
+        const disciplineFilter = document.getElementById('discipline-filter');
+        const gradeFilterContainer = document.getElementById('grade-filter');
+        const searchFilter = document.getElementById('search-filter');
+        const disciplineResultsGrid = document.getElementById('discipline-results-grid');
+        const disciplineNoResults = document.getElementById('discipline-no-results');
+        const disciplineResultsTitle = document.getElementById('discipline-results-title');
+        const disciplineChartTitle = document.getElementById('discipline-chart-title');
+        
+        const universitySearch = document.getElementById('university-search');
+        const universityListContainer = document.getElementById('university-list-container');
+        const universityDetailPanel = document.getElementById('university-detail-panel');
+        const universityPlaceholder = document.getElementById('university-placeholder');
+        const universityContent = document.getElementById('university-content');
+        const universityNameTitle = document.getElementById('university-name-title');
+        const universityResultsGrid = document.getElementById('university-results-grid');
+
+        const chartCanvas = document.getElementById('main-chart');
+        
+        let currentGrade = 'all';
+        let mainChart;
+        let uniqueUniversities = [];
+
+        const gradeStyles = {
+            'A+': 'bg-red-600', 'A': 'bg-orange-500', 'A-': 'bg-amber-500',
+            'B+': 'bg-lime-600', 'B': 'bg-green-600', 'B-': 'bg-teal-600',
+        };
+        const gradeOrder = { 'A+': 6, 'A': 5, 'A-': 4, 'B+': 3, 'B': 2, 'B-': 1 };
+
+        function switchView(view) {
+            if (view === 'discipline') {
+                disciplineView.classList.remove('hidden');
+                universityView.classList.add('hidden');
+                tabDiscipline.classList.add('active');
+                tabUniversity.classList.remove('active');
+                filterAndDisplay(); 
+            } else {
+                disciplineView.classList.add('hidden');
+                universityView.classList.remove('hidden');
+                tabDiscipline.classList.remove('active');
+                tabUniversity.classList.add('active');
+                populateUniversityList();
+            }
+        }
+
+        function populateDisciplineFilter() {
+            const disciplines = [...new Set(allData.map(item => `${item.disciplineCode} ${item.disciplineName}`))];
+            disciplines.sort();
+            disciplines.forEach(d => {
+                const option = document.createElement('option');
+                option.value = d;
+                option.textContent = d;
+                disciplineFilter.appendChild(option);
+            });
+        }
+        
+        function populateUniversityList(searchTerm = '') {
+            universityListContainer.innerHTML = '';
+            const filteredUniversities = uniqueUniversities.filter(uni => uni.toLowerCase().includes(searchTerm.toLowerCase()));
+            
+            filteredUniversities.forEach(uni => {
+                const item = document.createElement('button');
+                item.className = 'uni-list-item w-full text-left p-3 text-sm font-medium hover:bg-stone-100 transition-colors duration-200';
+                item.textContent = uni;
+                item.addEventListener('click', () => {
+                    document.querySelectorAll('.uni-list-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+                    displayUniversityDetails(uni);
+                });
+                universityListContainer.appendChild(item);
+            });
+        }
+
+        function renderDisciplineCards(data) {
+            disciplineResultsGrid.innerHTML = '';
+            if (data.length === 0) {
+                disciplineNoResults.classList.remove('hidden');
+                disciplineResultsTitle.textContent = `院校专业列表 (0)`;
+                return;
+            }
+            disciplineNoResults.classList.add('hidden');
+            disciplineResultsTitle.textContent = `院校专业列表 (${data.length})`;
+            
+            data.sort((a,b) => gradeOrder[b.grade] - gradeOrder[a.grade] || a.universityCode.localeCompare(b.universityCode));
+
+            data.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-lg shadow-sm border border-stone-200 hover:shadow-md hover:border-teal-400 transition-all duration-300';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <h3 class="text-lg font-bold text-stone-800">${item.universityName}</h3>
+                        <span class="grade-badge ${gradeStyles[item.grade] || 'bg-stone-400'}">${item.grade}</span>
+                    </div>
+                    <p class="text-sm text-stone-600 mt-1">${item.disciplineCode} ${item.disciplineName}</p>
+                    <p class="text-xs text-stone-400 mt-2">院校代码: ${item.universityCode}</p>
+                `;
+                disciplineResultsGrid.appendChild(card);
+            });
+        }
+
+        function displayUniversityDetails(universityName) {
+            universityPlaceholder.classList.add('hidden');
+            universityContent.classList.remove('hidden');
+            
+            universityNameTitle.textContent = `${universityName}优势学科学科评估结果`;
+            const uniData = allData.filter(item => item.universityName === universityName);
+            
+            uniData.sort((a, b) => gradeOrder[b.grade] - gradeOrder[a.grade] || a.disciplineName.localeCompare(b.disciplineName));
+
+            universityResultsGrid.innerHTML = '';
+            uniData.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between bg-white p-3 rounded-lg border border-stone-200';
+                row.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-stone-800">${item.disciplineName}</p>
+                        <p class="text-xs text-stone-500">${item.disciplineCode}</p>
+                    </div>
+                    <span class="grade-badge ${gradeStyles[item.grade] || 'bg-stone-400'}">${item.grade}</span>
+                `;
+                universityResultsGrid.appendChild(row);
+            });
+
+            updateChart(uniData, null, null, null, 'university');
+        }
+        
+        function updateChart(data, selectedDiscipline, selectedGrade, searchTerm, mode = 'discipline') {
+            const ctx = chartCanvas.getContext('2d');
+            if (mainChart) {
+                mainChart.destroy();
+            }
+            
+            let chartConfig = {};
+
+            if (mode === 'discipline') {
+                if (selectedDiscipline === 'all' && searchTerm.trim() === '') {
+                    disciplineChartTitle.textContent = '各学科上榜院校数量';
+                    const counts = allData.reduce((acc, item) => {
+                        const key = `${item.disciplineCode} ${item.disciplineName}`;
+                        acc[key] = (acc[key] || 0) + 1;
+                        return acc;
+                    }, {});
+                    const sortedDisciplines = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                    
+                    chartConfig = {
+                        type: 'bar',
+                        data: {
+                            labels: sortedDisciplines.map(d => d[0].split(' ')[1]),
+                            datasets: [{
+                                label: '上榜数量', data: sortedDisciplines.map(d => d[1]),
+                                backgroundColor: '#2dd4bf', borderColor: '#14b8a6', borderWidth: 1
+                            }]
+                        },
+                        options: { indexAxis: 'y', scales: { x: { title: { display: true, text: '上榜院校数量' } } } }
+                    };
+                } else {
+                    disciplineChartTitle.textContent = selectedDiscipline !== 'all' ? `${selectedDiscipline.split(' ')[1]}院校实力对比` : '搜索结果对比';
+                    const sortedData = [...data].sort((a, b) => gradeOrder[b.grade] - gradeOrder[a.grade]);
+                    chartConfig = {
+                        type: 'bar',
+                        data: {
+                            labels: sortedData.map(d => d.universityName),
+                            datasets: [{
+                                label: '评级', data: sortedData.map(d => gradeOrder[d.grade]),
+                                backgroundColor: sortedData.map(d => gradeStyles[d.grade])
+                            }]
+                        },
+                        options: { indexAxis: 'y', scales: { x: { title: { display: true, text: '评级分数 (A+=6, B-=1)' } } } }
+                    };
+                }
+            } else if (mode === 'university') {
+                 disciplineChartTitle.textContent = '本校优势学科实力对比';
+                 const uniData = [...data].sort((a,b) => gradeOrder[b.grade] - gradeOrder[a.grade]);
+                 chartConfig = {
+                    type: 'bar',
+                    data: {
+                        labels: uniData.map(d => d.disciplineName),
+                        datasets: [{
+                            label: '评级', data: uniData.map(d => gradeOrder[d.grade]),
+                            backgroundColor: uniData.map(d => gradeStyles[d.grade])
+                        }]
+                    },
+                    options: { indexAxis: 'y', scales: { x: { max: 6, title: { display: true, text: '评级分数 (A+=6, B-=1)' } } } }
+                };
+                // Move chart to university view
+                document.getElementById('university-detail-panel').appendChild(document.querySelector('.chart-container').parentElement);
+            }
+            
+            const commonOptions = {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if(context.dataset.label === '评级') {
+                                    const originalGrade = Object.keys(gradeOrder).find(key => gradeOrder[key] === context.raw);
+                                    return `${context.dataset.label}: ${originalGrade}`;
+                                }
+                                return `${context.dataset.label}: ${context.raw}`;
+                            }
+                        }
+                    }
+                }
+            };
+
+            mainChart = new Chart(ctx, { ...chartConfig, options: { ...commonOptions, ...chartConfig.options } });
+
+            // Ensure chart is in the correct view
+            if(mode === 'discipline'){
+                document.querySelector('#discipline-view .lg\\:col-span-2').appendChild(document.querySelector('.chart-container').parentElement);
+            }
+        }
+
+        function filterAndDisplay() {
+            const selectedDiscipline = disciplineFilter.value;
+            const searchTerm = searchFilter.value.trim().toLowerCase();
+
+            const filteredData = allData.filter(item => {
+                const disciplineMatch = selectedDiscipline === 'all' || `${item.disciplineCode} ${item.disciplineName}` === selectedDiscipline;
+                const gradeMatch = currentGrade === 'all' || item.grade === currentGrade;
+                const searchMatch = searchTerm === '' || item.universityName.toLowerCase().includes(searchTerm);
+                return disciplineMatch && gradeMatch && searchMatch;
+            });
+
+            renderDisciplineCards(filteredData);
+            updateChart(filteredData, selectedDiscipline, currentGrade, searchTerm, 'discipline');
+        }
+        
+        function setupEventListeners() {
+            tabDiscipline.addEventListener('click', () => switchView('discipline'));
+            tabUniversity.addEventListener('click', () => switchView('university'));
+
+            disciplineFilter.addEventListener('change', filterAndDisplay);
+            searchFilter.addEventListener('input', filterAndDisplay);
+            
+            document.querySelectorAll('.grade-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    document.querySelectorAll('.grade-btn').forEach(btn => {
+                        btn.classList.remove('bg-teal-600', 'text-white');
+                        btn.classList.add('bg-stone-100', 'text-stone-700');
+                    });
+                    
+                    button.classList.add('bg-teal-600', 'text-white');
+                    button.classList.remove('bg-stone-100', 'text-stone-700');
+                    
+                    currentGrade = button.dataset.grade;
+                    filterAndDisplay();
+                });
+            });
+
+            universitySearch.addEventListener('input', (e) => populateUniversityList(e.target.value));
+        }
+
+        function initialize() {
+            uniqueUniversities = [...new Set(allData.map(item => item.universityName))].sort((a,b) => a.localeCompare(b, 'zh-Hans-CN'));
+            populateDisciplineFilter();
+            setupEventListeners();
+            tabDiscipline.click();
+            document.querySelector('.grade-btn[data-grade="all"]').click();
+        }
+
+        initialize();
+
+    </script>
+</body>
+</html>
